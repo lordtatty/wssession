@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type Cache struct {
+type PrunerCache struct {
 	items             []*ResponseMsg
 	mu                sync.Mutex
 	pruning           bool
@@ -21,7 +21,7 @@ type PruneResult struct {
 // Prune every d duration
 // Removes all items from the cache that are older than d (the prior tick)
 // Cheaper than a TTL cache
-func (c *Cache) startPruning(d time.Duration, doneCh chan bool) {
+func (c *PrunerCache) startPruning(d time.Duration, doneCh chan bool) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 	c.mu.Lock()
@@ -52,7 +52,7 @@ func (c *Cache) startPruning(d time.Duration, doneCh chan bool) {
 	}
 }
 
-func (c *Cache) Add(r ResponseMsg) {
+func (c *PrunerCache) Add(r ResponseMsg) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.pruning && c.AutoPruneDuration != 0 {
@@ -61,19 +61,19 @@ func (c *Cache) Add(r ResponseMsg) {
 	c.items = append(c.items, &r)
 }
 
-func (c *Cache) Items() []*ResponseMsg {
+func (c *PrunerCache) Items() []*ResponseMsg {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.items
 }
 
-func (c *Cache) Len() int {
+func (c *PrunerCache) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.items)
 }
 
-func (c *Cache) PrunerIsRunning() bool {
+func (c *PrunerCache) PrunerIsRunning() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.pruning

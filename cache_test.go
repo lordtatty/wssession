@@ -26,7 +26,7 @@ func TestCache_Add_Items_Len(t *testing.T) {
 		},
 	}
 
-	sut := &wssession.Cache{}
+	sut := &wssession.PrunerCache{}
 	assert.Equal(0, sut.Len())
 
 	// Add two items
@@ -62,7 +62,7 @@ func TestCache_Pruning(t *testing.T) {
 		},
 	}
 
-	sut := &wssession.Cache{
+	sut := &wssession.PrunerCache{
 		AutoPruneDuration: time.Second,
 	}
 	assert.Equal(0, sut.Len())

@@ -27,7 +27,7 @@ type ResponseMsg struct {
 type Session struct {
 	ConnID string
 	Conn   WebsocketConn // Websocket connection - default is gorilla/websocket.Conn
-	Cache  Cache
+	Cache  PrunerCache
 	mux    sync.Mutex
 }
 

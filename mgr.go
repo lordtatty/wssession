@@ -3,7 +3,6 @@ package wssession
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -44,8 +43,6 @@ func (m *Mgr) Serve(conn WebsocketConn) error {
 	if err != nil {
 		return fmt.Errorf("error getting connection handler: %w", err)
 	}
-
-	sess.Cache.AutoPruneDuration = time.Minute
 
 	// If the connection ID is not empty then this is a reconnect, update the conn and replay the cache
 	if receivedMsg.ConnID != "" {

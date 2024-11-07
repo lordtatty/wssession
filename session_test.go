@@ -115,7 +115,7 @@ func TestSession_UpdateConnAndReplayCache(t *testing.T) {
 	sut := &wssession.Session{
 		ConnID: connID,
 		Conn:   mockConn1,
-		Cache:  wssession.Cache{},
+		Cache:  wssession.PrunerCache{},
 	}
 	for _, msg := range wantMsgs {
 		sut.Cache.Add(*msg)
