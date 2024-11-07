@@ -1,0 +1,11 @@
+with-expecter: true
+filename: "mock_{{.InterfaceName}}.go"
+dir: "{{.InterfaceDir}}/mocks"
+mockname: "Mock{{.InterfaceName}}"
+outpkg: "{{.PackageName}}_mock"
+packages:
+  github.com/lordtatty/wssession:
+    config:
+      all: True
+      recursive: True
+      with-expecter: True
