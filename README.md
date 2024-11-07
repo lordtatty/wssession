@@ -1,14 +1,17 @@
-
 # wssession
 
 `wssession` is a Go package that wraps a [Gorilla WebSocket](https://pkg.go.dev/github.com/gorilla/websocket) connection with session management, providing a simple way to handle WebSocket messages with automatic reconnection, message replay, and session caching.
 
+It is highly opinionated as to the structure of websocket messages, so as to keep track of history. It abstracts away much of this leaving the user to simply worry about the message content. See [wssession-client](https://github.com/lordtatty/wssession-client) for a working client-side library to manage the abstraction.
+
 ## Features
-- **Session Caching**: Messages are cached to allow replay when connections are lost. Messages are purged every 1-2 minutes in batches for efficiency. 
+
+- **Session Caching**: Messages are cached to allow replay when connections are lost. Messages are purged every 1-2 minutes in batches for efficiency.
 - **Automatic Reconnection**: Detects lost connections and automatically replays cached messages when a client reconnects.
 - **Configurable Handlers**: Allows registering custom message handlers for specific message types.
 
 ## Installation
+
 ```bash
 go get github.com/lordtatty/wssession
 ```
@@ -16,12 +19,14 @@ go get github.com/lordtatty/wssession
 ## Usage
 
 ### Setting up the Session Manager
+
 ```go
 sessMgr := wssession.Mgr{}
 sessMgr.RegisterHandler("ping", &pingHandler{})
 ```
 
 ### Upgrading a Connection
+
 ```go
 u := &websocket.Upgrader{
     ReadBufferSize:  1024,
@@ -45,6 +50,7 @@ if err != nil {
 ```
 
 ### Defining a Message Handler
+
 ```go
 type pingHandler struct{}
 
@@ -54,9 +60,3 @@ func (p *pingHandler) WSHandle(conn wssession.Writer, msg json.RawMessage) {
     }
 }
 ```
-
-## Roadmap
-- Configurable caching behavior and support for multiple cache types.
-
-## License
-MIT License
