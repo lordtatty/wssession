@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -20,15 +21,6 @@ type ResponseMsg struct {
 	ConnID  string `json:"conn_id"`
 	Type    string `json:"type"`
 	Message string `json:"message"`
-}
-
-// Represents a single session with a client
-// A session is from the user's point of view - it should be able to survive a temporary connection dropout
-type Session struct {
-	ConnID string
-	Conn   WebsocketConn // Websocket connection - default is gorilla/websocket.Conn
-	Cache  PrunerCache
-	mux    sync.Mutex
 }
 
 type NoopLogger struct{}
@@ -55,6 +47,22 @@ func logger() Logger {
 	return globalLogger
 }
 
+type WaiterResp struct {
+	Msg json.RawMessage
+	Err error
+}
+
+// Represents a single session with a client
+// A session is from the user's point of view - it should be able to survive a temporary connection dropout
+type Session struct {
+	ConnID   string
+	Conn     WebsocketConn // Websocket connection - default is gorilla/websocket.Conn
+	Cache    PrunerCache
+	mux      sync.Mutex
+	waitsMux sync.Mutex
+	waits    map[string]chan WaiterResp
+}
+
 func (c *Session) UpdateConnAndReplayCache(wsc WebsocketConn) error {
 	logger().Debug(">>>>>>>>>>>>>> Replaying cache", "len", c.Cache.Len())
 	c.mux.Lock()
@@ -69,7 +77,7 @@ func (c *Session) UpdateConnAndReplayCache(wsc WebsocketConn) error {
 	return nil
 }
 
-func (c *Session) writeJSON(msgType string, msg string) error {
+func (c *Session) writeJSONRaw(msgType string, msg string, waiterTimeout time.Duration) (chan WaiterResp, error) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	r := &ResponseMsg{
@@ -79,8 +87,37 @@ func (c *Session) writeJSON(msgType string, msg string) error {
 		Message: msg,
 	}
 	c.Cache.Add(*r)
+	var wCh chan WaiterResp
+	if waiterTimeout != 0 {
+		var err error
+		wCh, err = c.startWaiter(r.ID, waiterTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("error starting waiter: %w", err)
+		}
+	}
 	c.Conn.WriteJSON(r)
-	return nil // TODO: We aren't returning errors as we're caching the messages in case of a connection timeout - is this the right approach?
+	return wCh, nil // TODO: We aren't returning errors as we're caching the messages in case of a connection timeout - is this the right approach?
+}
+
+func (c *Session) writeJSON(msgType string, msg string) error {
+	_, err := c.writeJSONRaw(msgType, msg, 0)
+	return err
+}
+
+func (c *Session) writeJSONWithWaiter(msgType string, msg string, timeout time.Duration) (chan WaiterResp, error) {
+	return c.writeJSONRaw(msgType, msg, timeout)
+}
+
+func (c *Session) writeJSONAndWait(msgType string, msg string, timeout time.Duration) (*json.RawMessage, error) {
+	w, err := c.writeJSONWithWaiter(msgType, msg, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write and start waiter: %w", err)
+	}
+	r := <-w
+	if r.Err != nil {
+		return nil, fmt.Errorf("error in waiter response: %w", r.Err)
+	}
+	return &r.Msg, nil
 }
 
 func (c *Session) ID() string {
@@ -94,6 +131,50 @@ func (s *Session) Writer() *SessionWriter {
 	return &SessionWriter{sess: s}
 }
 
+func (s *Session) CompleteWaiterIfMatch(msg ReceivedMsg) bool {
+	s.waitsMux.Lock()
+	defer s.waitsMux.Unlock()
+	id := msg.ReplyTo
+	if _, exists := s.waits[id]; exists {
+		s.waits[id] <- WaiterResp{
+			Msg: msg.Message,
+		}
+		close(s.waits[id])
+		delete(s.waits, id)
+		return true
+	}
+	return false
+}
+
+func (s *Session) timeoutWaiter(id string) {
+	s.waitsMux.Lock()
+	defer s.waitsMux.Unlock()
+	if _, exists := s.waits[id]; exists {
+		s.waits[id] <- WaiterResp{
+			Err: fmt.Errorf("timeout waiting for reply to message: %s", id),
+		}
+		close(s.waits[id])
+		delete(s.waits, id)
+	}
+}
+
+func (s *Session) startWaiter(id string, timeout time.Duration) (chan WaiterResp, error) {
+	s.waitsMux.Lock()
+	defer s.waitsMux.Unlock()
+	if s.waits == nil {
+		s.waits = make(map[string]chan WaiterResp)
+	}
+	if _, exists := s.waits[id]; exists {
+		return nil, fmt.Errorf("already waiting for reply to message: %s", id)
+	}
+	s.waits[id] = make(chan WaiterResp, 1)
+	go func() {
+		<-time.After(timeout)
+		s.timeoutWaiter(id)
+	}()
+	return s.waits[id], nil
+}
+
 type SessionWriter struct {
 	sess *Session
 }
@@ -104,13 +185,31 @@ func (s *SessionWriter) SendJSON(msgType string, j any) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling message: %w", err)
 	}
-	fmt.Println("Sending JSON:", b)
-	fmt.Println("Sending JSON:", string(b))
 	return s.sess.writeJSON(msgType, string(b))
+}
+
+func (s *SessionWriter) SendJSONAndWait(msgType string, j any, timeout time.Duration) (*json.RawMessage, error) {
+	b, err := json.Marshal(j)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling message: %w", err)
+	}
+	msg, err := s.sess.writeJSONAndWait(msgType, string(b), timeout)
+	if err != nil {
+		return nil, fmt.Errorf("error in waiter response: %w", err)
+	}
+	return msg, nil
 }
 
 func (s *SessionWriter) SendStr(msgType string, msg string) error {
 	return s.sess.writeJSON(msgType, msg)
+}
+
+func (s *SessionWriter) SendStrAndWait(msgType string, msg string, timeout time.Duration) (*json.RawMessage, error) {
+	resp, err := s.sess.writeJSONAndWait(msgType, msg, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("error in waiter response: %w", err)
+	}
+	return resp, nil
 }
 
 // Mange multiple sessions

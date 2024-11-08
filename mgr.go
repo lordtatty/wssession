@@ -3,6 +3,8 @@ package wssession
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -11,15 +13,19 @@ type ReceivedMsg struct {
 	ConnID  string          `json:"conn_id"`
 	Type    string          `json:"type"`
 	Message json.RawMessage `json:"message"`
+	ReplyTo string          `json:"reply_to"`
+}
+
+type SessionGetter interface {
+	Get(connID string, conn WebsocketConn) (*Session, error)
 }
 
 type Mgr struct {
 	Handlers map[string]MessageHandler
-	Sessions Sessions
 }
 
 // HandleWebSocket upgrades the HTTP connection to a WebSocket and processes messages
-func (m *Mgr) Serve(conn WebsocketConn) error {
+func (m *Mgr) Serve(conn WebsocketConn, sessions SessionGetter) error {
 	// Read first messages - it must be of type "connect"
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -39,7 +45,7 @@ func (m *Mgr) Serve(conn WebsocketConn) error {
 	logger().Debug("Received connect message", "ConnID", receivedMsg.ConnID)
 
 	// Get the session
-	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn)
+	sess, err := sessions.Get(receivedMsg.ConnID, conn)
 	if err != nil {
 		return fmt.Errorf("error getting connection handler: %w", err)
 	}
@@ -52,6 +58,8 @@ func (m *Mgr) Serve(conn WebsocketConn) error {
 		}
 		logger().Debug("Replay complete")
 	}
+
+	wg := sync.WaitGroup{}
 
 	for {
 		// Read message from WebSocket
@@ -72,20 +80,35 @@ func (m *Mgr) Serve(conn WebsocketConn) error {
 			continue
 		}
 
-		// Get the handler for the message type
+		// Check for any sessions "waiting" for a response
+		if ok := sess.CompleteWaiterIfMatch(receivedMsg); ok {
+			// If the message was a response to a waiter, don't process it further
+			// It's being handled by the sess now
+			continue
+		}
+
+		// Otherwise get the handler for the message type
 		handler, exists := m.Handlers[receivedMsg.Type]
 		if exists {
-			handler.WSHandle(sess.Writer(), receivedMsg.Message)
+			// Run handler
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				handler.WSHandle(sess.Writer(), receivedMsg.Message)
+			}()
 		} else {
 			logger().Debug("No handler registered for message type: %s", receivedMsg.Type)
 		}
 	}
+	wg.Wait()
 	return nil
 }
 
 type Writer interface {
 	SendJSON(msgType string, j any) error
+	SendJSONAndWait(msgType string, j any, timeout time.Duration) (*json.RawMessage, error)
 	SendStr(msgType string, msg string) error
+	SendStrAndWait(msgType string, msg string, timeout time.Duration) (*json.RawMessage, error)
 }
 
 type MessageHandler interface {
