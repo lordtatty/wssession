@@ -18,8 +18,6 @@ func TestWSMgr_Serve_Success(t *testing.T) {
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
 
-	sut := &wssession.Mgr{}
-
 	// Prepare the connect message
 	receivedMsg := wssession.ReceivedMsg{
 		ConnID:  "",
@@ -35,8 +33,11 @@ func TestWSMgr_Serve_Success(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
-	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	// Run test
+	sut := &wssession.Mgr{
+		Sessions: mSessions,
+	}
+	err := sut.ServeSession(mConn)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -46,8 +47,6 @@ func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
-
-	sut := &wssession.Mgr{}
 
 	// Prepare an invalid first message type
 	invalidMsg := wssession.ReceivedMsg{
@@ -64,8 +63,11 @@ func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
-	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	// Run test
+	sut := &wssession.Mgr{
+		Sessions: mSessions,
+	}
+	err := sut.ServeSession(mConn)
 
 	// Assertions
 	assert.Error(t, err)
@@ -77,16 +79,17 @@ func TestWSMgr_Serve_ReadMessageError(t *testing.T) {
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
 
-	sut := &wssession.Mgr{}
-
 	// Mock connection behavior
 	mConn.EXPECT().ReadMessage().Return(0, nil, errors.New("read error")).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
-	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	// Run test
+	sut := &wssession.Mgr{
+		Sessions: mSessions,
+	}
+	err := sut.ServeSession(mConn)
 
 	// Assertions
 	assert.Error(t, err)
@@ -112,13 +115,6 @@ func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
 
-	mockHandler := new(mocks.MockMessageHandler)
-	sut := &wssession.Mgr{
-		Handlers: map[string]wssession.MessageHandler{
-			"testType": mockHandler,
-		},
-	}
-
 	// Prepare a valid connect message
 	connectMsg := wssession.ReceivedMsg{
 		ConnID:  "",
@@ -143,11 +139,19 @@ func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
+	mockHandler := new(mocks.MockMessageHandler)
+	sut := &wssession.Mgr{
+		Handlers: map[string]wssession.MessageHandler{
+			"testType": mockHandler,
+		},
+		Sessions: mSessions,
+	}
+
 	// Mock handler behavior
 	mockHandler.EXPECT().WSHandle(mock.AnythingOfType("*wssession.SessionWriter"), testMsg.Message).Return().Once()
 
 	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	err := sut.ServeSession(mConn)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -158,10 +162,6 @@ func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
-
-	sut := &wssession.Mgr{
-		Handlers: map[string]wssession.MessageHandler{},
-	}
 
 	// Prepare a valid connect message
 	connectMsg := wssession.ReceivedMsg{
@@ -187,8 +187,12 @@ func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
-	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	// Run test
+	sut := &wssession.Mgr{
+		Handlers: map[string]wssession.MessageHandler{},
+		Sessions: mSessions,
+	}
+	err := sut.ServeSession(mConn)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -198,14 +202,6 @@ func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
-
-	mockHandler := new(mocks.MockMessageHandler)
-	defer mockHandler.AssertExpectations(t)
-	sut := &wssession.Mgr{
-		Handlers: map[string]wssession.MessageHandler{
-			"testType": mockHandler,
-		},
-	}
 
 	replyTo := ""
 	mConn.EXPECT().WriteJSON(mock.MatchedBy(func(v interface{}) bool {
@@ -232,10 +228,19 @@ func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
 	// Manually clear the cache so it doesn't replay
 	sess.Cache = wssession.PrunerCache{}
 
-	assert.NotNil(t, sut)
-
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "some-id", mConn).Return(sess, nil).Once()
+
+	// Create handler and SUT
+	mockHandler := new(mocks.MockMessageHandler)
+	defer mockHandler.AssertExpectations(t)
+	sut := &wssession.Mgr{
+		Handlers: map[string]wssession.MessageHandler{
+			"testType": mockHandler,
+		},
+		Sessions: mSessions,
+	}
+	assert.NotNil(t, sut)
 
 	// Prepare a valid connect message
 	connectMsg := wssession.ReceivedMsg{
@@ -261,8 +266,8 @@ func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
 
 	// IMPORTANT - WSHandle should not be called because the response should go to the waiter
 
-	// Call the method
-	err := sut.Serve(mConn, mSessions)
+	// Run test
+	err := sut.ServeSession(mConn)
 	assert.NoError(t, err)
 
 	// Finally we need to wait for the wait call to complete to know this works

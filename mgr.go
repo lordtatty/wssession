@@ -22,10 +22,11 @@ type SessionGetter interface {
 
 type Mgr struct {
 	Handlers map[string]MessageHandler
+	Sessions SessionGetter
 }
 
 // HandleWebSocket upgrades the HTTP connection to a WebSocket and processes messages
-func (m *Mgr) Serve(conn WebsocketConn, sessions SessionGetter) error {
+func (m *Mgr) ServeSession(conn WebsocketConn) error {
 	// Read first messages - it must be of type "connect"
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -45,7 +46,7 @@ func (m *Mgr) Serve(conn WebsocketConn, sessions SessionGetter) error {
 	logger().Debug("Received connect message", "ConnID", receivedMsg.ConnID)
 
 	// Get the session
-	sess, err := sessions.Get(receivedMsg.ConnID, conn)
+	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn)
 	if err != nil {
 		return fmt.Errorf("error getting connection handler: %w", err)
 	}
