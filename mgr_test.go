@@ -400,3 +400,59 @@ func TestWSMgr_ServeSessionOnConnectDisconnect(t *testing.T) {
 	assert.True(t, hasRunDiscon1)
 	assert.True(t, hasRunDiscon2)
 }
+
+func TestWSMgr_ServeSessionOnConnectErr(t *testing.T) {
+	t.Parallel()
+	// Setup
+	mConn := new(mocks.MockWebsocketConn)
+	defer mConn.AssertExpectations(t)
+
+	// Prepare the connect message
+	receivedMsg := wssession.ReceivedMsg{
+		ConnID:  "",
+		Type:    "connect",
+		Message: json.RawMessage(`{"auth_token":"123"}`),
+	}
+	connectMessage, _ := json.Marshal(receivedMsg)
+
+	// Mock connection behavior
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, connectMessage, nil).Once()
+	// mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
+
+	mSessions := &mocks.MockSessionGetter{}
+	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+
+	// Run test
+	sut := &wssession.Mgr{
+		Sessions: mSessions,
+	}
+	var hasRun1, hasRun2 bool
+	sut.OnConnect(func(r wssession.ReceivedMsg) error {
+		assert.Equal(t, "", r.ConnID)
+		assert.Equal(t, "connect", r.Type)
+		assert.Equal(t, json.RawMessage(`{"auth_token":"123"}`), r.Message)
+		hasRun1 = true
+		return fmt.Errorf("expected conn rejection error")
+	})
+	sut.OnConnect(func(r wssession.ReceivedMsg) error {
+		hasRun2 = true
+		return nil
+	})
+	var hasRunDiscon1, hasRunDiscon2 bool
+	sut.OnDisconnect(func() error {
+		hasRunDiscon1 = true
+		return nil
+	})
+	sut.OnDisconnect(func() error {
+		hasRunDiscon2 = true
+		return nil
+	})
+	err := sut.ServeSession(mConn)
+
+	// Assertions
+	assert.EqualError(t, err, "error in OnConnectFn: expected conn rejection error")
+	assert.True(t, hasRun1)
+	assert.False(t, hasRun2) /// This should be Fals - we should bail after the first connection error and not run any more onConnect functions
+	assert.True(t, hasRunDiscon1)
+	assert.True(t, hasRunDiscon2)
+}

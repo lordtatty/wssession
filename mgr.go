@@ -79,10 +79,7 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 	}
 	logger().Debug("Received connect message", "ConnID", receivedMsg.ConnID)
 
-	// Call OnConnect functions
-	if err := m.callOnConnectFns(receivedMsg); err != nil {
-		return fmt.Errorf("error in OnConnectFn: %w", err)
-	}
+	// defer calling OnDisconnect functions
 	defer func() {
 		// TODO: shoudl we refactor so it doesn't use a defer? This will let us return errs.
 		// This whole func probably needs breaking down.
@@ -90,6 +87,11 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 			logger().Error("Error in OnDisconnectFn", "error", err)
 		}
 	}()
+
+	// Call OnConnect functions
+	if err := m.callOnConnectFns(receivedMsg); err != nil {
+		return fmt.Errorf("error in OnConnectFn: %w", err)
+	}
 
 	// Get the session
 	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn)
