@@ -95,7 +95,10 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				handler.WSHandle(sess.Writer(), receivedMsg.Message)
+				err := handler.WSHandle(sess.Writer(), receivedMsg.Message)
+				if err != nil {
+					logger().Error("Non-Fatal Error handling message", "error", err.Error())
+				}
 			}()
 		} else {
 			logger().Debug("No handler registered for message type: %s", receivedMsg.Type)
@@ -113,7 +116,7 @@ type Writer interface {
 }
 
 type MessageHandler interface {
-	WSHandle(w Writer, msg json.RawMessage)
+	WSHandle(w Writer, msg json.RawMessage) error
 }
 
 func (m *Mgr) RegisterHandler(msgType string, handler MessageHandler) {

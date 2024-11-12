@@ -23,8 +23,21 @@ func (_m *MockMessageHandler) EXPECT() *MockMessageHandler_Expecter {
 }
 
 // WSHandle provides a mock function with given fields: w, msg
-func (_m *MockMessageHandler) WSHandle(w wssession.Writer, msg json.RawMessage) {
-	_m.Called(w, msg)
+func (_m *MockMessageHandler) WSHandle(w wssession.Writer, msg json.RawMessage) error {
+	ret := _m.Called(w, msg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WSHandle")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(wssession.Writer, json.RawMessage) error); ok {
+		r0 = rf(w, msg)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // MockMessageHandler_WSHandle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WSHandle'
@@ -46,12 +59,12 @@ func (_c *MockMessageHandler_WSHandle_Call) Run(run func(w wssession.Writer, msg
 	return _c
 }
 
-func (_c *MockMessageHandler_WSHandle_Call) Return() *MockMessageHandler_WSHandle_Call {
-	_c.Call.Return()
+func (_c *MockMessageHandler_WSHandle_Call) Return(_a0 error) *MockMessageHandler_WSHandle_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockMessageHandler_WSHandle_Call) RunAndReturn(run func(wssession.Writer, json.RawMessage)) *MockMessageHandler_WSHandle_Call {
+func (_c *MockMessageHandler_WSHandle_Call) RunAndReturn(run func(wssession.Writer, json.RawMessage) error) *MockMessageHandler_WSHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }

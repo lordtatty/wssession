@@ -3,6 +3,7 @@ package wssession_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -148,8 +149,64 @@ func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
 	}
 
 	// Mock handler behavior
-	mockHandler.EXPECT().WSHandle(mock.AnythingOfType("*wssession.SessionWriter"), testMsg.Message).Return().Once()
+	mockHandler.EXPECT().WSHandle(mock.AnythingOfType("*wssession.SessionWriter"), testMsg.Message).Return(nil).Once()
 
+	// Call the method
+	err := sut.ServeSession(mConn)
+
+	// Assertions
+	assert.NoError(t, err)
+	mockHandler.AssertExpectations(t)
+}
+
+func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
+	// Setup
+	mConn := new(mocks.MockWebsocketConn)
+	defer mConn.AssertExpectations(t)
+
+	// Prepare a valid connect message
+	connectMsg := wssession.ReceivedMsg{
+		ConnID:  "",
+		Type:    "connect",
+		Message: json.RawMessage(`{}`),
+	}
+	connectMessage, _ := json.Marshal(connectMsg)
+
+	// Prepare a message that should invoke the handler
+	testMsg := wssession.ReceivedMsg{
+		ConnID:  "some-id",
+		Type:    "testType",
+		Message: json.RawMessage(`{"key":"value"}`),
+	}
+	testMessage, _ := json.Marshal(testMsg)
+
+	// Mock connection behavior
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, connectMessage, nil).Once()
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, testMessage, nil).Once()
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
+
+	mSessions := &mocks.MockSessionGetter{}
+	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+
+	mockHandler := new(mocks.MockMessageHandler)
+	sut := &wssession.Mgr{
+		Handlers: map[string]wssession.MessageHandler{
+			"testType": mockHandler,
+		},
+		Sessions: mSessions,
+	}
+
+	// Mock handler behavior
+	wantErr := fmt.Errorf("test handler error")
+	mockHandler.EXPECT().WSHandle(mock.AnythingOfType("*wssession.SessionWriter"), testMsg.Message).Return(wantErr).Once()
+
+	mLogger := &mocks.MockLogger{}
+	defer mLogger.AssertExpectations(t)
+	mLogger.EXPECT().Error("Non-Fatal Error handling message", "error", "test handler error").Once()
+	// expecy any debug messages
+	mLogger.EXPECT().Debug(mock.Anything, mock.Anything, mock.Anything)
+
+	wssession.SetLogger(mLogger)
 	// Call the method
 	err := sut.ServeSession(mConn)
 
