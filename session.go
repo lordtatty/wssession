@@ -13,7 +13,6 @@ type WebsocketConn interface {
 	WriteJSON(msgType interface{}) error
 	ReadMessage() (messageType int, p []byte, err error)
 	WriteMessage(messageType int, data []byte) error
-	Close() error
 }
 
 type ResponseMsg struct {
@@ -37,7 +36,9 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
-var globalLogger Logger = &NoopLogger{}
+var DefaultLogger = &NoopLogger{}
+
+var globalLogger Logger = DefaultLogger
 
 func SetLogger(l Logger) {
 	globalLogger = l

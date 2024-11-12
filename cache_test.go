@@ -9,6 +9,7 @@ import (
 )
 
 func TestCache_Add_Items_Len(t *testing.T) {
+	t.Parallel()
 	assert := assert.New(t)
 
 	want := []*wssession.ResponseMsg{
@@ -39,6 +40,7 @@ func TestCache_Add_Items_Len(t *testing.T) {
 }
 
 func TestCache_Pruning(t *testing.T) {
+	t.Parallel()
 	assert := assert.New(t)
 
 	want := []*wssession.ResponseMsg{

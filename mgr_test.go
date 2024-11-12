@@ -15,6 +15,7 @@ import (
 )
 
 func TestWSMgr_Serve_Success(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -45,6 +46,7 @@ func TestWSMgr_Serve_Success(t *testing.T) {
 }
 
 func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -76,6 +78,7 @@ func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
 }
 
 func TestWSMgr_Serve_ReadMessageError(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -98,6 +101,7 @@ func TestWSMgr_Serve_ReadMessageError(t *testing.T) {
 }
 
 func TestWSMgr_RegisterHandler(t *testing.T) {
+	t.Parallel()
 	sut := &wssession.Mgr{}
 
 	// Create a mock handler
@@ -112,6 +116,7 @@ func TestWSMgr_RegisterHandler(t *testing.T) {
 }
 
 func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -160,6 +165,7 @@ func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
 }
 
 func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
+	// DO not parallelise due to changing the logger
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -207,6 +213,9 @@ func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	mLogger.EXPECT().Debug(mock.Anything, mock.Anything, mock.Anything)
 
 	wssession.SetLogger(mLogger)
+	defer func() {
+		wssession.SetLogger(wssession.DefaultLogger)
+	}()
 	// Call the method
 	err := sut.ServeSession(mConn)
 
@@ -216,6 +225,7 @@ func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 }
 
 func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
@@ -256,6 +266,7 @@ func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
 }
 
 func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)

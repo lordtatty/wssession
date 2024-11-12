@@ -15,6 +15,7 @@ import (
 )
 
 func TestSession_SendJSONAndWait(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -55,6 +56,7 @@ func TestSession_SendJSONAndWait(t *testing.T) {
 }
 
 func TestSession_SendJSONAndWaitTimesOut(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -86,6 +88,7 @@ func TestSession_SendJSONAndWaitTimesOut(t *testing.T) {
 }
 
 func TestSession_SendStrAndWait(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -123,6 +126,7 @@ func TestSession_SendStrAndWait(t *testing.T) {
 }
 
 func TestSession_SendStrAndWaitTimesOut(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -150,6 +154,7 @@ func TestSession_SendStrAndWaitTimesOut(t *testing.T) {
 	assert.Nil(t, resp)
 }
 func TestSession_SendJSON(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -180,6 +185,7 @@ func TestSession_SendJSON(t *testing.T) {
 }
 
 func TestSession_SendStr(t *testing.T) {
+	t.Parallel()
 	mockConn := new(mocks.MockWebsocketConn)
 	defer mockConn.AssertExpectations(t)
 	sut := &wssession.Session{
@@ -205,6 +211,7 @@ func TestSession_SendStr(t *testing.T) {
 }
 
 func TestSession_UpdateConnAndReplayCache(t *testing.T) {
+	t.Parallel()
 	connID := uuid.NewString()
 	wantMsgs := []*wssession.ResponseMsg{
 		{
@@ -276,6 +283,7 @@ func respMsgMatcher(connID, msgType, msg string) func(resp *wssession.ResponseMs
 }
 
 func TestSession_SessionWriterRespectsUpdatedConn(t *testing.T) {
+	t.Parallel()
 	connID := uuid.NewString()
 
 	// Mock conn1 - this is the initial conn
@@ -304,6 +312,7 @@ func TestSession_SessionWriterRespectsUpdatedConn(t *testing.T) {
 }
 
 func TestSessionWriter_SendStr(t *testing.T) {
+	t.Parallel()
 	connID := uuid.NewString()
 
 	// Conn - we expect to see the message written to the conn
@@ -323,6 +332,7 @@ func TestSessionWriter_SendStr(t *testing.T) {
 }
 
 func TestSessionWriter_SendJSON(t *testing.T) {
+	t.Parallel()
 	connID := uuid.NewString()
 
 	// Conn - we expect to see the message written to the conn
@@ -344,6 +354,7 @@ func TestSessionWriter_SendJSON(t *testing.T) {
 }
 
 func TestSessions_Get(t *testing.T) {
+	t.Parallel()
 	assert := assert.New(t)
 
 	// Mock conn
