@@ -20,9 +20,43 @@ type SessionGetter interface {
 	Get(connID string, conn WebsocketConn) (*Session, error)
 }
 
+type OnConnectFn func(m ReceivedMsg) error
+type OnDisconnectFn func() error
+
 type Mgr struct {
-	Handlers map[string]MessageHandler
-	Sessions SessionGetter
+	Handlers     map[string]MessageHandler
+	Sessions     SessionGetter
+	onConnFns    []OnConnectFn
+	onDisconnFns []OnDisconnectFn
+}
+
+// When receiving the initial "connect" message, the OnConnect function is called
+// This is a good place to do auth, etc.  Return an error to close the connection.
+func (m *Mgr) OnConnect(f OnConnectFn) {
+	m.onConnFns = append(m.onConnFns, f)
+}
+
+func (m *Mgr) callOnConnectFns(r ReceivedMsg) error {
+	for _, f := range m.onConnFns {
+		if err := f(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// When the connection is closed, the OnDisconnect function is called
+func (m *Mgr) OnDisconnect(f OnDisconnectFn) {
+	m.onDisconnFns = append(m.onDisconnFns, f)
+}
+
+func (m *Mgr) callOnDisconnectFns() error {
+	for _, f := range m.onDisconnFns {
+		if err := f(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // HandleWebSocket upgrades the HTTP connection to a WebSocket and processes messages
@@ -44,6 +78,18 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 		return fmt.Errorf("first message must be of type 'connect'")
 	}
 	logger().Debug("Received connect message", "ConnID", receivedMsg.ConnID)
+
+	// Call OnConnect functions
+	if err := m.callOnConnectFns(receivedMsg); err != nil {
+		return fmt.Errorf("error in OnConnectFn: %w", err)
+	}
+	defer func() {
+		// TODO: shoudl we refactor so it doesn't use a defer? This will let us return errs.
+		// This whole func probably needs breaking down.
+		if err := m.callOnDisconnectFns(); err != nil {
+			logger().Error("Error in OnDisconnectFn", "error", err)
+		}
+	}()
 
 	// Get the session
 	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn)

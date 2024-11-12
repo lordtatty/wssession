@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestWSMgr_Serve_Success(t *testing.T) {
+func TestWSMgr_ServeSession_Success(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -45,7 +45,7 @@ func TestWSMgr_Serve_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
+func TestWSMgr_ServeSession_InvalidFirstMessageType(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -77,7 +77,7 @@ func TestWSMgr_Serve_InvalidFirstMessageType(t *testing.T) {
 	assert.Contains(t, err.Error(), "first message must be of type 'connect'")
 }
 
-func TestWSMgr_Serve_ReadMessageError(t *testing.T) {
+func TestWSMgr_ServeSession_ReadMessageError(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -115,7 +115,7 @@ func TestWSMgr_RegisterHandler(t *testing.T) {
 	assert.Equal(t, mockHandler, sut.Handlers["testType"])
 }
 
-func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
+func TestWSMgr_ServeSession_HandlerInvocation(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -164,7 +164,7 @@ func TestWSMgr_Serve_HandlerInvocation(t *testing.T) {
 	mockHandler.AssertExpectations(t)
 }
 
-func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
+func TestWSMgr_ServeSession_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	// DO not parallelise due to changing the logger
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -224,7 +224,7 @@ func TestWSMgr_Serve_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	mockHandler.AssertExpectations(t)
 }
 
-func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
+func TestWSMgr_ServeSession_NoHandlerRegistered(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -265,7 +265,7 @@ func TestWSMgr_Serve_NoHandlerRegistered(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
+func TestWSMgr_ServeSession_PassMsgToWaiter(t *testing.T) {
 	t.Parallel()
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
@@ -340,4 +340,63 @@ func TestWSMgr_Serve_PassMsgToWaiter(t *testing.T) {
 
 	// Finally we need to wait for the wait call to complete to know this works
 	<-finishedWaitingCh
+}
+
+func TestWSMgr_ServeSessionOnConnectDisconnect(t *testing.T) {
+	t.Parallel()
+	// Setup
+	mConn := new(mocks.MockWebsocketConn)
+	defer mConn.AssertExpectations(t)
+
+	// Prepare the connect message
+	receivedMsg := wssession.ReceivedMsg{
+		ConnID:  "",
+		Type:    "connect",
+		Message: json.RawMessage(`{"auth_token":"123"}`),
+	}
+	connectMessage, _ := json.Marshal(receivedMsg)
+
+	// Mock connection behavior
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, connectMessage, nil).Once()
+	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
+
+	mSessions := &mocks.MockSessionGetter{}
+	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+
+	// Run test
+	sut := &wssession.Mgr{
+		Sessions: mSessions,
+	}
+	var hasRun1, hasRun2 bool
+	sut.OnConnect(func(r wssession.ReceivedMsg) error {
+		assert.Equal(t, "", r.ConnID)
+		assert.Equal(t, "connect", r.Type)
+		assert.Equal(t, json.RawMessage(`{"auth_token":"123"}`), r.Message)
+		hasRun1 = true
+		return nil
+	})
+	sut.OnConnect(func(r wssession.ReceivedMsg) error {
+		assert.Equal(t, "", r.ConnID)
+		assert.Equal(t, "connect", r.Type)
+		assert.Equal(t, json.RawMessage(`{"auth_token":"123"}`), r.Message)
+		hasRun2 = true
+		return nil
+	})
+	var hasRunDiscon1, hasRunDiscon2 bool
+	sut.OnDisconnect(func() error {
+		hasRunDiscon1 = true
+		return nil
+	})
+	sut.OnDisconnect(func() error {
+		hasRunDiscon2 = true
+		return nil
+	})
+	err := sut.ServeSession(mConn)
+
+	// Assertions
+	assert.NoError(t, err)
+	assert.True(t, hasRun1)
+	assert.True(t, hasRun2)
+	assert.True(t, hasRunDiscon1)
+	assert.True(t, hasRunDiscon2)
 }
