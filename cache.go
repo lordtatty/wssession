@@ -9,7 +9,7 @@ type PrunerCache struct {
 	items             []*ResponseMsg
 	mu                sync.Mutex
 	pruning           bool
-	AutoPruneDuration time.Duration
+	AutoPruneDuration time.Duration // If not set, defaults to 1 minute
 }
 
 type PruneResult struct {
@@ -55,7 +55,10 @@ func (c *PrunerCache) startPruning(d time.Duration, doneCh chan bool) {
 func (c *PrunerCache) Add(r ResponseMsg) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.pruning && c.AutoPruneDuration != 0 {
+	if !c.pruning {
+		if c.AutoPruneDuration == 0 {
+			c.AutoPruneDuration = time.Minute
+		}
 		go c.startPruning(c.AutoPruneDuration, nil)
 	}
 	c.items = append(c.items, &r)
