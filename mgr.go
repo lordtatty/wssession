@@ -81,7 +81,7 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 
 	// defer calling OnDisconnect functions
 	defer func() {
-		// TODO: shoudl we refactor so it doesn't use a defer? This will let us return errs.
+		// TODO: should we refactor so it doesn't use a defer? This will let us return errs.
 		// This whole func probably needs breaking down.
 		if err := m.callOnDisconnectFns(); err != nil {
 			logger().Error("Error in OnDisconnectFn", "error", err)
