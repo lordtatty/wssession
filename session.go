@@ -53,23 +53,60 @@ type WaiterResp struct {
 	Err error
 }
 
+type Cache interface {
+	Add(connID string, r ResponseMsg)
+	Items(connID string) []*ResponseMsg
+	Len(connID string) int
+}
+
 // Represents a single session with a client
 // A session is from the user's point of view - it should be able to survive a temporary connection dropout
 type Session struct {
 	ConnID   string
 	Conn     WebsocketConn // Websocket connection - default is gorilla/websocket.Conn
-	Cache    PrunerCache
+	cache    Cache
 	mux      sync.Mutex
 	waitsMux sync.Mutex
 	waits    map[string]chan WaiterResp
 }
 
+func (c *Session) Cache() Cache {
+	return c.cache
+}
+
+func (c *Session) addToCache(r ResponseMsg) {
+	if c.cache == nil {
+		return
+	}
+	c.cache.Add(c.ConnID, r)
+}
+
+func (c *Session) cachedItems() []*ResponseMsg {
+	if c.cache == nil {
+		return nil
+	}
+	return c.cache.Items(c.ConnID)
+}
+
+func (c *Session) cacheLen() int {
+	if c.cache == nil {
+		return -1
+	}
+	return c.cache.Len(c.ConnID)
+}
+
+func (c *Session) SetCache(cache Cache) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	c.cache = cache
+}
+
 func (c *Session) UpdateConnAndReplayCache(wsc WebsocketConn) error {
-	logger().Debug(">>>>>>>>>>>>>> Replaying cache", "len", c.Cache.Len())
+	logger().Debug(">>>>>>>>>>>>>> Replaying cache", "len", c.cacheLen())
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.Conn = wsc
-	for _, msg := range c.Cache.Items() {
+	for _, msg := range c.cachedItems() {
 		err := c.Conn.WriteJSON(msg)
 		if err != nil {
 			return fmt.Errorf("error writing JSON to websocket: %w", err)
@@ -87,7 +124,7 @@ func (c *Session) writeJSONRaw(msgType string, msg string, waiterTimeout time.Du
 		Type:    msgType,
 		Message: msg,
 	}
-	c.Cache.Add(*r)
+	c.addToCache(*r)
 	var wCh chan WaiterResp
 	if waiterTimeout != 0 {
 		var err error
@@ -218,7 +255,7 @@ type Sessions struct {
 	sess map[string]*Session
 }
 
-func (s *Sessions) Get(connId string, conn WebsocketConn) (*Session, error) {
+func (s *Sessions) Get(connId string, conn WebsocketConn, cache Cache) (*Session, error) {
 	if s.sess == nil {
 		s.sess = make(map[string]*Session)
 	}
@@ -227,6 +264,7 @@ func (s *Sessions) Get(connId string, conn WebsocketConn) (*Session, error) {
 		c := &Session{
 			Conn:   conn,
 			ConnID: uuid.NewString(),
+			cache:  cache,
 		}
 		s.sess[c.ID()] = c
 		return c, nil

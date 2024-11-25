@@ -19,6 +19,8 @@ func TestWSMgr_ServeSession_Success(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
 
 	// Prepare the connect message
 	receivedMsg := wssession.ReceivedMsg{
@@ -33,13 +35,13 @@ func TestWSMgr_ServeSession_Success(t *testing.T) {
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.On("Get", "", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	// Run test
 	sut := &wssession.Mgr{
 		Sessions: mSessions,
 	}
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -66,11 +68,14 @@ func TestWSMgr_ServeSession_InvalidFirstMessageType(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
+
 	// Run test
 	sut := &wssession.Mgr{
 		Sessions: mSessions,
 	}
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.Error(t, err)
@@ -89,11 +94,14 @@ func TestWSMgr_ServeSession_ReadMessageError(t *testing.T) {
 	mSessions := &mocks.MockSessionGetter{}
 	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
 
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
+
 	// Run test
 	sut := &wssession.Mgr{
 		Sessions: mSessions,
 	}
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.Error(t, err)
@@ -137,13 +145,17 @@ func TestWSMgr_ServeSession_HandlerInvocation(t *testing.T) {
 	}
 	testMessage, _ := json.Marshal(testMsg)
 
+	// Mock cache
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
+
 	// Mock connection behavior
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, connectMessage, nil).Once()
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, testMessage, nil).Once()
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	mockHandler := new(mocks.MockMessageHandler)
 	sut := &wssession.Mgr{
@@ -157,7 +169,7 @@ func TestWSMgr_ServeSession_HandlerInvocation(t *testing.T) {
 	mockHandler.EXPECT().WSHandle(mock.AnythingOfType("*wssession.SessionWriter"), testMsg.Message).Return(nil).Once()
 
 	// Call the method
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -169,6 +181,10 @@ func TestWSMgr_ServeSession_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
+
+	// Mock cache
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
 
 	// Prepare a valid connect message
 	connectMsg := wssession.ReceivedMsg{
@@ -192,7 +208,7 @@ func TestWSMgr_ServeSession_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	mockHandler := new(mocks.MockMessageHandler)
 	sut := &wssession.Mgr{
@@ -217,7 +233,7 @@ func TestWSMgr_ServeSession_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 		wssession.SetLogger(wssession.DefaultLogger)
 	}()
 	// Call the method
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -229,6 +245,10 @@ func TestWSMgr_ServeSession_NoHandlerRegistered(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
+
+	// Mock cache
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
 
 	// Prepare a valid connect message
 	connectMsg := wssession.ReceivedMsg{
@@ -252,14 +272,14 @@ func TestWSMgr_ServeSession_NoHandlerRegistered(t *testing.T) {
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	// Run test
 	sut := &wssession.Mgr{
 		Handlers: map[string]wssession.MessageHandler{},
 		Sessions: mSessions,
 	}
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -270,6 +290,10 @@ func TestWSMgr_ServeSession_PassMsgToWaiter(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
+
+	// Mock cache
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
 
 	replyTo := ""
 	mConn.EXPECT().WriteJSON(mock.MatchedBy(func(v interface{}) bool {
@@ -294,10 +318,10 @@ func TestWSMgr_ServeSession_PassMsgToWaiter(t *testing.T) {
 	<-time.After(100 * time.Millisecond)
 
 	// Manually clear the cache so it doesn't replay
-	sess.Cache = wssession.PrunerCache{}
+	sess.SetCache(&wssession.PrunerCache{})
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "some-id", mConn).Return(sess, nil).Once()
+	mSessions.EXPECT().Get("some-id", mConn, mCache).Return(sess, nil).Once()
 
 	// Create handler and SUT
 	mockHandler := new(mocks.MockMessageHandler)
@@ -335,7 +359,7 @@ func TestWSMgr_ServeSession_PassMsgToWaiter(t *testing.T) {
 	// IMPORTANT - WSHandle should not be called because the response should go to the waiter
 
 	// Run test
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 	assert.NoError(t, err)
 
 	// Finally we need to wait for the wait call to complete to know this works
@@ -347,6 +371,10 @@ func TestWSMgr_ServeSessionOnConnectDisconnect(t *testing.T) {
 	// Setup
 	mConn := new(mocks.MockWebsocketConn)
 	defer mConn.AssertExpectations(t)
+
+	// Mock cache
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
 
 	// Prepare the connect message
 	receivedMsg := wssession.ReceivedMsg{
@@ -361,7 +389,7 @@ func TestWSMgr_ServeSessionOnConnectDisconnect(t *testing.T) {
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	// Run test
 	sut := &wssession.Mgr{
@@ -391,7 +419,7 @@ func TestWSMgr_ServeSessionOnConnectDisconnect(t *testing.T) {
 		hasRunDiscon2 = true
 		return nil
 	})
-	err := sut.ServeSession(mConn)
+	err := sut.ServeSession(mConn, mCache)
 
 	// Assertions
 	assert.NoError(t, err)
@@ -447,7 +475,8 @@ func TestWSMgr_ServeSessionOnConnectErr(t *testing.T) {
 		hasRunDiscon2 = true
 		return nil
 	})
-	err := sut.ServeSession(mConn)
+	cache := &mocks.MockCache{}
+	err := sut.ServeSession(mConn, cache)
 
 	// Assertions
 	assert.EqualError(t, err, "error in OnConnectFn: expected conn rejection error")

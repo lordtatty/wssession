@@ -17,7 +17,7 @@ type ReceivedMsg struct {
 }
 
 type SessionGetter interface {
-	Get(connID string, conn WebsocketConn) (*Session, error)
+	Get(connID string, conn WebsocketConn, cache Cache) (*Session, error)
 }
 
 type OnConnectFn func(m ReceivedMsg) error
@@ -60,7 +60,7 @@ func (m *Mgr) callOnDisconnectFns() error {
 }
 
 // HandleWebSocket upgrades the HTTP connection to a WebSocket and processes messages
-func (m *Mgr) ServeSession(conn WebsocketConn) error {
+func (m *Mgr) ServeSession(conn WebsocketConn, cache Cache) error {
 	// Read first messages - it must be of type "connect"
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -94,7 +94,7 @@ func (m *Mgr) ServeSession(conn WebsocketConn) error {
 	}
 
 	// Get the session
-	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn)
+	sess, err := m.Sessions.Get(receivedMsg.ConnID, conn, cache)
 	if err != nil {
 		return fmt.Errorf("error getting connection handler: %w", err)
 	}

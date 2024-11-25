@@ -20,9 +20,9 @@ func (_m *MockSessionGetter) EXPECT() *MockSessionGetter_Expecter {
 	return &MockSessionGetter_Expecter{mock: &_m.Mock}
 }
 
-// Get provides a mock function with given fields: connID, conn
-func (_m *MockSessionGetter) Get(connID string, conn wssession.WebsocketConn) (*wssession.Session, error) {
-	ret := _m.Called(connID, conn)
+// Get provides a mock function with given fields: connID, conn, cache
+func (_m *MockSessionGetter) Get(connID string, conn wssession.WebsocketConn, cache wssession.Cache) (*wssession.Session, error) {
+	ret := _m.Called(connID, conn, cache)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
@@ -30,19 +30,19 @@ func (_m *MockSessionGetter) Get(connID string, conn wssession.WebsocketConn) (*
 
 	var r0 *wssession.Session
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, wssession.WebsocketConn) (*wssession.Session, error)); ok {
-		return rf(connID, conn)
+	if rf, ok := ret.Get(0).(func(string, wssession.WebsocketConn, wssession.Cache) (*wssession.Session, error)); ok {
+		return rf(connID, conn, cache)
 	}
-	if rf, ok := ret.Get(0).(func(string, wssession.WebsocketConn) *wssession.Session); ok {
-		r0 = rf(connID, conn)
+	if rf, ok := ret.Get(0).(func(string, wssession.WebsocketConn, wssession.Cache) *wssession.Session); ok {
+		r0 = rf(connID, conn, cache)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*wssession.Session)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(string, wssession.WebsocketConn) error); ok {
-		r1 = rf(connID, conn)
+	if rf, ok := ret.Get(1).(func(string, wssession.WebsocketConn, wssession.Cache) error); ok {
+		r1 = rf(connID, conn, cache)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -58,13 +58,14 @@ type MockSessionGetter_Get_Call struct {
 // Get is a helper method to define mock.On call
 //   - connID string
 //   - conn wssession.WebsocketConn
-func (_e *MockSessionGetter_Expecter) Get(connID interface{}, conn interface{}) *MockSessionGetter_Get_Call {
-	return &MockSessionGetter_Get_Call{Call: _e.mock.On("Get", connID, conn)}
+//   - cache wssession.Cache
+func (_e *MockSessionGetter_Expecter) Get(connID interface{}, conn interface{}, cache interface{}) *MockSessionGetter_Get_Call {
+	return &MockSessionGetter_Get_Call{Call: _e.mock.On("Get", connID, conn, cache)}
 }
 
-func (_c *MockSessionGetter_Get_Call) Run(run func(connID string, conn wssession.WebsocketConn)) *MockSessionGetter_Get_Call {
+func (_c *MockSessionGetter_Get_Call) Run(run func(connID string, conn wssession.WebsocketConn, cache wssession.Cache)) *MockSessionGetter_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(wssession.WebsocketConn))
+		run(args[0].(string), args[1].(wssession.WebsocketConn), args[2].(wssession.Cache))
 	})
 	return _c
 }
@@ -74,7 +75,7 @@ func (_c *MockSessionGetter_Get_Call) Return(_a0 *wssession.Session, _a1 error) 
 	return _c
 }
 
-func (_c *MockSessionGetter_Get_Call) RunAndReturn(run func(string, wssession.WebsocketConn) (*wssession.Session, error)) *MockSessionGetter_Get_Call {
+func (_c *MockSessionGetter_Get_Call) RunAndReturn(run func(string, wssession.WebsocketConn, wssession.Cache) (*wssession.Session, error)) *MockSessionGetter_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -258,11 +258,12 @@ func TestSession_UpdateConnAndReplayCache(t *testing.T) {
 	sut := &wssession.Session{
 		ConnID: connID,
 		Conn:   mockConn1,
-		Cache:  wssession.PrunerCache{},
 	}
+	c := &wssession.PrunerCache{}
 	for _, msg := range wantMsgs {
-		sut.Cache.Add(*msg)
+		c.Add(connID, *msg)
 	}
+	sut.SetCache(c)
 
 	err := sut.UpdateConnAndReplayCache(mockConn2)
 
@@ -363,26 +364,29 @@ func TestSessions_Get(t *testing.T) {
 
 	var sut wssession.Sessions
 
-	sess1, err := sut.Get("", &mConn1)
+	mCache := &mocks.MockCache{}
+	defer mCache.AssertExpectations(t)
+
+	sess1, err := sut.Get("", &mConn1, mCache)
 	assert.NoError(err)
 	assert.Equal(sess1.Conn, &mConn1)
-	assert.Equal(sess1.Cache.Len(), 0)
+	assert.Equal(sess1.Cache(), mCache)
 
-	sess2, err := sut.Get("", &mConn2)
+	sess2, err := sut.Get("", &mConn2, mCache)
 	assert.NoError(err)
 	assert.Equal(sess2.Conn, &mConn2)
-	assert.Equal(sess2.Cache.Len(), 0)
+	assert.Equal(sess2.Cache(), mCache)
 
 	// Get the sessions again
-	rtvSess1, err := sut.Get(sess1.ID(), &mConn1)
+	rtvSess1, err := sut.Get(sess1.ID(), &mConn1, mCache)
 	assert.NoError(err)
 	assert.Equal(rtvSess1.Conn, &mConn1)
-	assert.Equal(rtvSess1.Cache.Len(), 0)
 	assert.Equal(rtvSess1.ConnID, sess1.ID())
+	assert.Equal(rtvSess1.Cache(), mCache)
 
-	rtvSess2, err := sut.Get(sess2.ID(), &mConn2)
+	rtvSess2, err := sut.Get(sess2.ID(), &mConn2, mCache)
 	assert.NoError(err)
 	assert.Equal(rtvSess2.Conn, &mConn2)
-	assert.Equal(rtvSess2.Cache.Len(), 0)
 	assert.Equal(rtvSess2.ConnID, sess2.ID())
+	assert.Equal(rtvSess2.Cache(), mCache)
 }

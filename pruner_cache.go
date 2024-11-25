@@ -6,7 +6,8 @@ import (
 )
 
 type PrunerCache struct {
-	items             []*ResponseMsg
+	nextTickIndexes   map[string]int
+	items             map[string][]*ResponseMsg
 	mu                sync.Mutex
 	pruning           bool
 	AutoPruneDuration time.Duration // If not set, defaults to 1 minute
@@ -31,16 +32,27 @@ func (c *PrunerCache) startPruning(d time.Duration, doneCh chan bool) {
 	}
 	c.pruning = true
 	defer func() { c.pruning = false }()
-	l := len(c.items)
+	c.nextTickIndexes = make(map[string]int, len(c.items))
+	for k := range c.items {
+		c.nextTickIndexes[k] = len(c.items[k])
+	}
 	c.mu.Unlock()
 	for {
 		select {
 		case <-ticker.C:
 			logger().Debug("Pruning cache after", "duration", d)
 			c.mu.Lock()
-			c.items = c.items[l:]
-			l = len(c.items)
-			if l == 0 {
+			for k, v := range c.items {
+				l := c.nextTickIndexes[k]
+				c.items[k] = v[l:]
+				c.nextTickIndexes[k] = len(c.items[k])
+				if c.nextTickIndexes[k] == 0 {
+					delete(c.items, k)
+					delete(c.nextTickIndexes, k)
+				}
+			}
+			if len(c.items) == 0 {
+				logger().Debug("Cache is empty, stopping pruning")
 				c.mu.Unlock()
 				return
 			}
@@ -52,28 +64,46 @@ func (c *PrunerCache) startPruning(d time.Duration, doneCh chan bool) {
 	}
 }
 
-func (c *PrunerCache) Add(r ResponseMsg) {
+func (c *PrunerCache) ensureItems() {
+	if c.items == nil {
+		c.items = make(map[string][]*ResponseMsg)
+	}
+}
+
+func (c *PrunerCache) Add(connID string, r ResponseMsg) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ensureItems()
 	if !c.pruning {
 		if c.AutoPruneDuration == 0 {
 			c.AutoPruneDuration = time.Minute
 		}
 		go c.startPruning(c.AutoPruneDuration, nil)
 	}
-	c.items = append(c.items, &r)
+	if _, ok := c.items[connID]; !ok {
+		c.items[connID] = []*ResponseMsg{}
+	}
+	c.items[connID] = append(c.items[connID], &r)
 }
 
-func (c *PrunerCache) Items() []*ResponseMsg {
+func (c *PrunerCache) Items(connID string) []*ResponseMsg {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.items
+	c.ensureItems()
+	if _, ok := c.items[connID]; !ok {
+		return nil
+	}
+	return c.items[connID]
 }
 
-func (c *PrunerCache) Len() int {
+func (c *PrunerCache) Len(connID string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.items)
+	c.ensureItems()
+	if _, ok := c.items[connID]; !ok {
+		return 0
+	}
+	return len(c.items[connID])
 }
 
 func (c *PrunerCache) PrunerIsRunning() bool {
