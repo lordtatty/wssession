@@ -22,6 +22,7 @@ type RedisCache struct {
 	Client      RedisClient
 	TTL         time.Duration
 	TimestampFn func() time.Time // Defaults to time.Now, typically you won't want to modify this unless writing a test
+	KeyPrefix   string           // Optional prefix for all keys
 }
 
 var ctx = context.Background()
@@ -40,6 +41,13 @@ func (r *RedisCache) timeNow() time.Time {
 	return r.TimestampFn()
 }
 
+func (r *RedisCache) formatKey(base string) string {
+	if r.KeyPrefix == "" {
+		return base
+	}
+	return fmt.Sprintf("%s-%s", r.KeyPrefix, base)
+}
+
 func (r *RedisCache) Add(connID string, msg ResponseMsg) error {
 	if connID == "" {
 		return fmt.Errorf("connection ID cannot be empty")
@@ -50,7 +58,8 @@ func (r *RedisCache) Add(connID string, msg ResponseMsg) error {
 	}
 	// Use the current timestamp as part of the key
 	timestamp := r.timeNow().UnixNano()
-	key := fmt.Sprintf("cache:%s:%d", connID, timestamp)
+	baseKey := fmt.Sprintf("cache:%s:%d", connID, timestamp)
+	key := r.formatKey(baseKey)
 
 	// Add the message with a TTL
 	resp := r.Client.Set(ctx, key, string(msgStr), r.ttl())
@@ -61,7 +70,8 @@ func (r *RedisCache) Add(connID string, msg ResponseMsg) error {
 }
 
 func (r *RedisCache) Items(connID string) ([]*ResponseMsg, error) {
-	pattern := fmt.Sprintf("cache:%s:*", connID)
+	basePattern := fmt.Sprintf("cache:%s:*", connID)
+	pattern := r.formatKey(basePattern)
 	keys, err := r.Client.Keys(ctx, pattern).Result()
 	if err != nil {
 		return nil, err
@@ -69,7 +79,6 @@ func (r *RedisCache) Items(connID string) ([]*ResponseMsg, error) {
 
 	sortedKeys := r.sortKeysByTimestamp(keys)
 
-	// Use capacity of sortedKeys as it's our upper bound
 	resp := make([]*ResponseMsg, 0, len(sortedKeys))
 	for _, key := range sortedKeys {
 		message, err := r.Client.Get(ctx, key).Result()
@@ -98,7 +107,16 @@ func (r *RedisCache) sortKeysByTimestamp(keys []string) []string {
 
 	for i, key := range keys {
 		// Split by : and take the last part as timestamp
-		parts := strings.Split(key, ":")
+		// If there's a prefix, remove it first
+		keyWithoutPrefix := key
+		if r.KeyPrefix != "" {
+			parts := strings.SplitN(key, "-", 2)
+			if len(parts) == 2 {
+				keyWithoutPrefix = parts[1]
+			}
+		}
+
+		parts := strings.Split(keyWithoutPrefix, ":")
 		if len(parts) >= 3 {
 			timestamp, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 			keyTimestamps[i] = keyWithTimestamp{key, timestamp}

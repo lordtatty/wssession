@@ -3,6 +3,8 @@ package wssession_test
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +45,7 @@ func TestRedisCache_Add(t *testing.T) {
 		redisKey    string
 		redisVal    string
 		cacheTTL    time.Duration
+		keyPrefix   string
 		expectError bool
 		errorMsg    string // expected error message
 		redisError  error
@@ -102,6 +105,34 @@ func TestRedisCache_Add(t *testing.T) {
 			errorMsg:    "connection ID cannot be empty",
 			skipRedis:   true, // Redis mock won't be called due to early error
 		},
+		{
+			name: "successful storage with key prefix",
+			msg: wssession.ResponseMsg{
+				ID:      "5",
+				ConnID:  "conn-5",
+				Type:    "test",
+				Message: "hello",
+			},
+			connID:    "0005",
+			keyPrefix: "myapp",
+			redisKey:  "myapp-cache:0005:1609459200000000000", // prefix-base
+			redisVal:  `{"id":"5","conn_id":"conn-5","type":"test","message":"hello"}`,
+			cacheTTL:  0,
+		},
+		{
+			name: "successful storage with key prefix and custom TTL",
+			msg: wssession.ResponseMsg{
+				ID:      "6",
+				ConnID:  "conn-6",
+				Type:    "test",
+				Message: "world",
+			},
+			connID:    "0006",
+			keyPrefix: "prefix2",
+			redisKey:  "prefix2-cache:0006:1609459200000000000",
+			redisVal:  `{"id":"6","conn_id":"conn-6","type":"test","message":"world"}`,
+			cacheTTL:  time.Hour,
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +167,7 @@ func TestRedisCache_Add(t *testing.T) {
 				TimestampFn: func() time.Time {
 					return fixedTime
 				},
+				KeyPrefix: tt.keyPrefix,
 			}
 
 			err := sut.Add(tt.connID, tt.msg)
@@ -160,6 +192,7 @@ func TestRedisCache_Items(t *testing.T) {
 		name        string
 		desc        string
 		connID      string
+		keyPrefix   string
 		keys        []string
 		messages    map[string]string
 		getErrors   map[string]error
@@ -171,19 +204,16 @@ func TestRedisCache_Items(t *testing.T) {
 			name:   "successful retrieval in order",
 			desc:   "Messages should be returned in chronological order based on timestamp in key",
 			connID: "conn1",
-			// Keys as returned by Redis - could be any order
 			keys: []string{
-				"cache:conn1:3", // timestamp 3
-				"cache:conn1:1", // timestamp 1
-				"cache:conn1:2", // timestamp 2
+				"cache:conn1:3",
+				"cache:conn1:1",
+				"cache:conn1:2",
 			},
-			// Messages should match the keys, will be retrieved in timestamp order
 			messages: map[string]string{
 				"cache:conn1:1": `{"id":"1","conn_id":"conn1","type":"test","message":"first"}`,
 				"cache:conn1:2": `{"id":"2","conn_id":"conn1","type":"test","message":"second"}`,
 				"cache:conn1:3": `{"id":"3","conn_id":"conn1","type":"test","message":"third"}`,
 			},
-			// Results should be ordered by the timestamp in the key
 			expected: []*wssession.ResponseMsg{
 				{ID: "1", ConnID: "conn1", Type: "test", Message: "first"},
 				{ID: "2", ConnID: "conn1", Type: "test", Message: "second"},
@@ -213,12 +243,11 @@ func TestRedisCache_Items(t *testing.T) {
 			name:   "expired keys are correctly skipped",
 			desc:   "Should skip expired keys and continue processing remaining keys",
 			connID: "conn4",
-			// Keys as returned by Redis
 			keys: []string{
-				"cache:conn4:2", // timestamp 2 (valid)
-				"cache:conn4:1", // timestamp 1 (expired)
-				"cache:conn4:4", // timestamp 4 (valid)
-				"cache:conn4:3", // timestamp 3 (expired)
+				"cache:conn4:2",
+				"cache:conn4:1",
+				"cache:conn4:4",
+				"cache:conn4:3",
 			},
 			messages: map[string]string{
 				"cache:conn4:2": `{"id":"2","conn_id":"conn4","type":"test","message":"valid1"}`,
@@ -228,7 +257,6 @@ func TestRedisCache_Items(t *testing.T) {
 				"cache:conn4:1": redis.Nil,
 				"cache:conn4:3": redis.Nil,
 			},
-			// Results should be ordered by timestamp, only including valid messages
 			expected: []*wssession.ResponseMsg{
 				{ID: "2", ConnID: "conn4", Type: "test", Message: "valid1"},
 				{ID: "4", ConnID: "conn4", Type: "test", Message: "valid2"},
@@ -253,6 +281,51 @@ func TestRedisCache_Items(t *testing.T) {
 			keys:     []string{},
 			expected: []*wssession.ResponseMsg{},
 		},
+		{
+			name:      "successful retrieval with key prefix",
+			desc:      "Messages should be returned in order with prefixed keys",
+			connID:    "conn7",
+			keyPrefix: "myapp",
+			keys: []string{
+				"myapp-cache:conn7:3",
+				"myapp-cache:conn7:1",
+				"myapp-cache:conn7:2",
+			},
+			messages: map[string]string{
+				"myapp-cache:conn7:1": `{"id":"1","conn_id":"conn7","type":"test","message":"first"}`,
+				"myapp-cache:conn7:2": `{"id":"2","conn_id":"conn7","type":"test","message":"second"}`,
+				"myapp-cache:conn7:3": `{"id":"3","conn_id":"conn7","type":"test","message":"third"}`,
+			},
+			expected: []*wssession.ResponseMsg{
+				{ID: "1", ConnID: "conn7", Type: "test", Message: "first"},
+				{ID: "2", ConnID: "conn7", Type: "test", Message: "second"},
+				{ID: "3", ConnID: "conn7", Type: "test", Message: "third"},
+			},
+		},
+		{
+			name:      "mixed prefixed and expired keys",
+			desc:      "Should handle expired keys correctly with prefixed keys",
+			connID:    "conn8",
+			keyPrefix: "prefix2",
+			keys: []string{
+				"prefix2-cache:conn8:2",
+				"prefix2-cache:conn8:1",
+				"prefix2-cache:conn8:4",
+				"prefix2-cache:conn8:3",
+			},
+			messages: map[string]string{
+				"prefix2-cache:conn8:2": `{"id":"2","conn_id":"conn8","type":"test","message":"valid1"}`,
+				"prefix2-cache:conn8:4": `{"id":"4","conn_id":"conn8","type":"test","message":"valid2"}`,
+			},
+			getErrors: map[string]error{
+				"prefix2-cache:conn8:1": redis.Nil,
+				"prefix2-cache:conn8:3": redis.Nil,
+			},
+			expected: []*wssession.ResponseMsg{
+				{ID: "2", ConnID: "conn8", Type: "test", Message: "valid1"},
+				{ID: "4", ConnID: "conn8", Type: "test", Message: "valid2"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -271,16 +344,20 @@ func TestRedisCache_Items(t *testing.T) {
 				keysCmd.SetVal(tt.keys)
 			}
 			pattern := fmt.Sprintf("cache:%s:*", tt.connID)
+			if tt.keyPrefix != "" {
+				pattern = fmt.Sprintf("%s-%s", tt.keyPrefix, pattern)
+			}
 			mRClient.EXPECT().Keys(mock.Anything, pattern).Return(keysCmd).Once()
 
-			// The code will sort keys by timestamp and Get in that order
 			// Sort keys by the numeric suffix which is our timestamp
 			sortedKeys := make([]string, len(tt.keys))
 			copy(sortedKeys, tt.keys)
 			sort.Slice(sortedKeys, func(i, j int) bool {
 				var t1, t2 int64
-				fmt.Sscanf(sortedKeys[i], "cache:%*s:%d", &t1)
-				fmt.Sscanf(sortedKeys[j], "cache:%*s:%d", &t2)
+				parts1 := strings.Split(sortedKeys[i], ":")
+				parts2 := strings.Split(sortedKeys[j], ":")
+				t1, _ = strconv.ParseInt(parts1[len(parts1)-1], 10, 64)
+				t2, _ = strconv.ParseInt(parts2[len(parts2)-1], 10, 64)
 				return t1 < t2
 			})
 
@@ -296,7 +373,8 @@ func TestRedisCache_Items(t *testing.T) {
 			}
 
 			sut := &wssession.RedisCache{
-				Client: mRClient,
+				Client:    mRClient,
+				KeyPrefix: tt.keyPrefix,
 			}
 
 			msgs, err := sut.Items(tt.connID)
