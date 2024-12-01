@@ -70,7 +70,7 @@ func (c *PrunerCache) ensureItems() {
 	}
 }
 
-func (c *PrunerCache) Add(connID string, r ResponseMsg) {
+func (c *PrunerCache) Add(connID string, r ResponseMsg) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ensureItems()
@@ -84,26 +84,17 @@ func (c *PrunerCache) Add(connID string, r ResponseMsg) {
 		c.items[connID] = []*ResponseMsg{}
 	}
 	c.items[connID] = append(c.items[connID], &r)
+	return nil
 }
 
-func (c *PrunerCache) Items(connID string) []*ResponseMsg {
+func (c *PrunerCache) Items(connID string) ([]*ResponseMsg, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ensureItems()
 	if _, ok := c.items[connID]; !ok {
-		return nil
+		return nil, nil
 	}
-	return c.items[connID]
-}
-
-func (c *PrunerCache) Len(connID string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.ensureItems()
-	if _, ok := c.items[connID]; !ok {
-		return 0
-	}
-	return len(c.items[connID])
+	return c.items[connID], nil
 }
 
 func (c *PrunerCache) PrunerIsRunning() bool {

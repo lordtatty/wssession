@@ -54,9 +54,8 @@ type WaiterResp struct {
 }
 
 type Cache interface {
-	Add(connID string, r ResponseMsg)
-	Items(connID string) []*ResponseMsg
-	Len(connID string) int
+	Add(connID string, r ResponseMsg) error
+	Items(connID string) ([]*ResponseMsg, error)
 }
 
 // Represents a single session with a client
@@ -81,18 +80,11 @@ func (c *Session) addToCache(r ResponseMsg) {
 	c.cache.Add(c.ConnID, r)
 }
 
-func (c *Session) cachedItems() []*ResponseMsg {
+func (c *Session) cachedItems() ([]*ResponseMsg, error) {
 	if c.cache == nil {
-		return nil
+		return nil, nil
 	}
 	return c.cache.Items(c.ConnID)
-}
-
-func (c *Session) cacheLen() int {
-	if c.cache == nil {
-		return -1
-	}
-	return c.cache.Len(c.ConnID)
 }
 
 func (c *Session) SetCache(cache Cache) {
@@ -102,11 +94,15 @@ func (c *Session) SetCache(cache Cache) {
 }
 
 func (c *Session) UpdateConnAndReplayCache(wsc WebsocketConn) error {
-	logger().Debug(">>>>>>>>>>>>>> Replaying cache", "len", c.cacheLen())
+	itms, err := c.cachedItems()
+	if err != nil {
+		return fmt.Errorf("error getting cache length: %w", err)
+	}
+	logger().Debug("Replaying cache", "len", len(itms))
 	c.mux.Lock()
 	defer c.mux.Unlock()
 	c.Conn = wsc
-	for _, msg := range c.cachedItems() {
+	for _, msg := range itms {
 		err := c.Conn.WriteJSON(msg)
 		if err != nil {
 			return fmt.Errorf("error writing JSON to websocket: %w", err)

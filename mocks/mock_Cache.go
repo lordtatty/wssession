@@ -21,8 +21,21 @@ func (_m *MockCache) EXPECT() *MockCache_Expecter {
 }
 
 // Add provides a mock function with given fields: connID, r
-func (_m *MockCache) Add(connID string, r wssession.ResponseMsg) {
-	_m.Called(connID, r)
+func (_m *MockCache) Add(connID string, r wssession.ResponseMsg) error {
+	ret := _m.Called(connID, r)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Add")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, wssession.ResponseMsg) error); ok {
+		r0 = rf(connID, r)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // MockCache_Add_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Add'
@@ -44,18 +57,18 @@ func (_c *MockCache_Add_Call) Run(run func(connID string, r wssession.ResponseMs
 	return _c
 }
 
-func (_c *MockCache_Add_Call) Return() *MockCache_Add_Call {
-	_c.Call.Return()
+func (_c *MockCache_Add_Call) Return(_a0 error) *MockCache_Add_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockCache_Add_Call) RunAndReturn(run func(string, wssession.ResponseMsg)) *MockCache_Add_Call {
+func (_c *MockCache_Add_Call) RunAndReturn(run func(string, wssession.ResponseMsg) error) *MockCache_Add_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Items provides a mock function with given fields: connID
-func (_m *MockCache) Items(connID string) []*wssession.ResponseMsg {
+func (_m *MockCache) Items(connID string) ([]*wssession.ResponseMsg, error) {
 	ret := _m.Called(connID)
 
 	if len(ret) == 0 {
@@ -63,6 +76,10 @@ func (_m *MockCache) Items(connID string) []*wssession.ResponseMsg {
 	}
 
 	var r0 []*wssession.ResponseMsg
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) ([]*wssession.ResponseMsg, error)); ok {
+		return rf(connID)
+	}
 	if rf, ok := ret.Get(0).(func(string) []*wssession.ResponseMsg); ok {
 		r0 = rf(connID)
 	} else {
@@ -71,7 +88,13 @@ func (_m *MockCache) Items(connID string) []*wssession.ResponseMsg {
 		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(connID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // MockCache_Items_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Items'
@@ -92,58 +115,12 @@ func (_c *MockCache_Items_Call) Run(run func(connID string)) *MockCache_Items_Ca
 	return _c
 }
 
-func (_c *MockCache_Items_Call) Return(_a0 []*wssession.ResponseMsg) *MockCache_Items_Call {
-	_c.Call.Return(_a0)
+func (_c *MockCache_Items_Call) Return(_a0 []*wssession.ResponseMsg, _a1 error) *MockCache_Items_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockCache_Items_Call) RunAndReturn(run func(string) []*wssession.ResponseMsg) *MockCache_Items_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Len provides a mock function with given fields: connID
-func (_m *MockCache) Len(connID string) int {
-	ret := _m.Called(connID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Len")
-	}
-
-	var r0 int
-	if rf, ok := ret.Get(0).(func(string) int); ok {
-		r0 = rf(connID)
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-
-	return r0
-}
-
-// MockCache_Len_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Len'
-type MockCache_Len_Call struct {
-	*mock.Call
-}
-
-// Len is a helper method to define mock.On call
-//   - connID string
-func (_e *MockCache_Expecter) Len(connID interface{}) *MockCache_Len_Call {
-	return &MockCache_Len_Call{Call: _e.mock.On("Len", connID)}
-}
-
-func (_c *MockCache_Len_Call) Run(run func(connID string)) *MockCache_Len_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
-	})
-	return _c
-}
-
-func (_c *MockCache_Len_Call) Return(_a0 int) *MockCache_Len_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockCache_Len_Call) RunAndReturn(run func(string) int) *MockCache_Len_Call {
+func (_c *MockCache_Items_Call) RunAndReturn(run func(string) ([]*wssession.ResponseMsg, error)) *MockCache_Items_Call {
 	_c.Call.Return(run)
 	return _c
 }
