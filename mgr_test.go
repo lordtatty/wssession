@@ -35,7 +35,7 @@ func TestWSMgr_ServeSession_Success(t *testing.T) {
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, []byte{}, &websocket.CloseError{Code: websocket.CloseGoingAway}).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn, mCache).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, mCache).Return(&wssession.Session{}, nil).Once()
 
 	// Run test
 	sut := &wssession.Mgr{
@@ -63,10 +63,10 @@ func TestWSMgr_ServeSession_InvalidFirstMessageType(t *testing.T) {
 
 	// Mock connection behavior
 	mConn.EXPECT().ReadMessage().Return(websocket.TextMessage, invalidMessage, nil).Once()
-	mConn.EXPECT().WriteMessage(websocket.CloseMessage, mock.Anything).Return(nil).Once()
+	mConn.EXPECT().WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Error waiting for connect message. Ensure the first message is of type 'connect'")).Return(nil).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, nil).Return(&wssession.Session{}, nil).Once()
 
 	mCache := &mocks.MockCache{}
 	defer mCache.AssertExpectations(t)
@@ -90,9 +90,10 @@ func TestWSMgr_ServeSession_ReadMessageError(t *testing.T) {
 
 	// Mock connection behavior
 	mConn.EXPECT().ReadMessage().Return(0, nil, errors.New("read error")).Once()
+	mConn.EXPECT().WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Error waiting for connect message. Ensure the first message is of type 'connect'")).Return(nil).Once()
 
 	mSessions := &mocks.MockSessionGetter{}
-	mSessions.On("Get", "", mConn).Return(&wssession.Session{}, nil).Once()
+	mSessions.EXPECT().Get("", mConn, nil).Return(&wssession.Session{}, nil).Once()
 
 	mCache := &mocks.MockCache{}
 	defer mCache.AssertExpectations(t)
@@ -105,7 +106,7 @@ func TestWSMgr_ServeSession_ReadMessageError(t *testing.T) {
 
 	// Assertions
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error reading message")
+	assert.Contains(t, err.Error(), "error reading connect message: read error")
 }
 
 func TestWSMgr_RegisterHandler(t *testing.T) {
@@ -225,8 +226,6 @@ func TestWSMgr_ServeSession_HandlerInvocationReturnsErrAndLogs(t *testing.T) {
 	mLogger := &mocks.MockLogger{}
 	defer mLogger.AssertExpectations(t)
 	mLogger.EXPECT().Error("Non-Fatal Error handling message", "error", "test handler error").Once()
-	// expecy any debug messages
-	mLogger.EXPECT().Debug(mock.Anything, mock.Anything, mock.Anything)
 
 	wssession.SetLogger(mLogger)
 	defer func() {
@@ -479,7 +478,7 @@ func TestWSMgr_ServeSessionOnConnectErr(t *testing.T) {
 	err := sut.ServeSession(mConn, cache)
 
 	// Assertions
-	assert.EqualError(t, err, "error in OnConnectFn: expected conn rejection error")
+	assert.EqualError(t, err, "session establishment failed: connection handler error: expected conn rejection error")
 	assert.True(t, hasRun1)
 	assert.False(t, hasRun2) /// This should be Fals - we should bail after the first connection error and not run any more onConnect functions
 	assert.True(t, hasRunDiscon1)

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/lordtatty/wssession"
 	mocks "github.com/lordtatty/wssession/mocks"
 	"github.com/redis/go-redis/v9"
@@ -24,6 +25,7 @@ func TestRedisCache_ImplementsCache(t *testing.T) {
 	mConn := mocks.MockWebsocketConn{}
 	defer mConn.AssertExpectations(t)
 	mConn.EXPECT().ReadMessage().Return(0, nil, nil) // not sending a connection message first will immediately end and return the session
+	mConn.EXPECT().WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Error waiting for connect message. Ensure the first message is of type 'connect'")).Return(nil).Once()
 
 	sut := &wssession.RedisCache{}
 	s := wssession.Mgr{}
