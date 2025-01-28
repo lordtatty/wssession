@@ -28,7 +28,7 @@ func TestRedisCache_ImplementsCache(t *testing.T) {
 	mConn.EXPECT().WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Error waiting for connect message. Ensure the first message is of type 'connect'")).Return(nil).Once()
 
 	sut := &wssession.RedisCache{}
-	s := wssession.Mgr{}
+	s := wssession.Mgr[wssession.NoCustomState]{}
 	s.ServeSession(&mConn, sut)
 	assert.Implements((*wssession.Cache)(nil), sut)
 	assert.True(true, "this will always be true, if sut does not implement Cache, the code won't compile")

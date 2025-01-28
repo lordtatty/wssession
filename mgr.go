@@ -18,6 +18,8 @@ type ReceivedMsg struct {
 	ReplyTo string          `json:"reply_to"`
 }
 
+type NoCustomState struct{}
+
 // SessionGetter gets a session, either existing or new
 type SessionGetter interface {
 	Get(connID string, conn WebsocketConn, cache Cache) (*Session, error)
@@ -32,42 +34,42 @@ type Writer interface {
 }
 
 // MessageHandler defines how different message types are processed
-type MessageHandler interface {
-	WSHandle(w Writer, msg json.RawMessage) error
+type MessageHandler[T any] interface {
+	WSHandle(w Writer, msg json.RawMessage, customState *T) error
 }
 
 // OnConnectFn is called when a new connection is established
-type OnConnectFn func(m ReceivedMsg) error
+type OnConnectFn[T any] func(m ReceivedMsg, customState T) (T, error)
 
 // OnDisconnectFn is called when a connection is terminated
 type OnDisconnectFn func() error
 
 // Mgr is the main WebSocket session manager
-type Mgr struct {
-	Handlers     map[string]MessageHandler
+type Mgr[T any] struct {
+	Handlers     map[string]MessageHandler[T]
 	Sessions     SessionGetter
-	onConnFns    []OnConnectFn
+	onConnFns    []OnConnectFn[T]
 	onDisconnFns []OnDisconnectFn
 }
 
 // RegisterHandler associates a message type with its handler
-func (m *Mgr) RegisterHandler(msgType string, handler MessageHandler) {
+func (m *Mgr[T]) RegisterHandler(msgType string, handler MessageHandler[T]) {
 	if m.Handlers == nil {
-		m.Handlers = make(map[string]MessageHandler)
+		m.Handlers = make(map[string]MessageHandler[T])
 	}
 	m.Handlers[msgType] = handler
 }
 
-func (m *Mgr) OnConnect(fn OnConnectFn) {
+func (m *Mgr[T]) OnConnect(fn OnConnectFn[T]) {
 	m.onConnFns = append(m.onConnFns, fn)
 }
 
-func (m *Mgr) OnDisconnect(fn OnDisconnectFn) {
+func (m *Mgr[T]) OnDisconnect(fn OnDisconnectFn) {
 	m.onDisconnFns = append(m.onDisconnFns, fn)
 }
 
 // waitForConnect waits for and validates the initial connect message
-func (m *Mgr) waitForConnect(conn WebsocketConn) (*ReceivedMsg, error) {
+func (m *Mgr[T]) waitForConnect(conn WebsocketConn) (*ReceivedMsg, error) {
 	_, message, err := conn.ReadMessage()
 	if err != nil {
 		return nil, fmt.Errorf("error reading connect message: %w", err)
@@ -86,34 +88,35 @@ func (m *Mgr) waitForConnect(conn WebsocketConn) (*ReceivedMsg, error) {
 }
 
 // establishSession creates or restores a session for the connection
-func (m *Mgr) establishSession(conn WebsocketConn, cache Cache, msg *ReceivedMsg) (*Session, error) {
+func (m *Mgr[T]) establishSession(conn WebsocketConn, cache Cache, msg *ReceivedMsg) (*Session, *T, error) {
 	// Call OnConnect handler if configured
 	var err error
+	customState := *new(T)
 	for _, fn := range m.onConnFns {
-		err = fn(*msg)
+		customState, err = fn(*msg, customState)
 		if err != nil {
-			return nil, fmt.Errorf("connection handler error: %w", err)
+			return nil, nil, fmt.Errorf("connection handler error: %w", err)
 		}
 	}
 
 	// Create new session
 	sess, err := m.Sessions.Get(msg.ConnID, conn, cache)
 	if err != nil {
-		return nil, fmt.Errorf("error creating session: %w", err)
+		return nil, nil, fmt.Errorf("error creating session: %w", err)
 	}
 
 	// Handle reconnection if ConnID is present
 	if msg.ConnID != "" {
 		if err := sess.UpdateConnAndReplayCache(conn); err != nil {
-			return nil, fmt.Errorf("error replaying cache: %w", err)
+			return nil, nil, fmt.Errorf("error replaying cache: %w", err)
 		}
 	}
 
-	return sess, nil
+	return sess, &customState, nil
 }
 
 // handleMessages processes incoming messages for an established session
-func (m *Mgr) handleMessages(ctx context.Context, sess *Session, conn WebsocketConn) error {
+func (m *Mgr[T]) handleMessages(ctx context.Context, sess *Session, conn WebsocketConn, customState *T) error {
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, 2) // Capture errors from handlers
 
@@ -156,7 +159,7 @@ func (m *Mgr) handleMessages(ctx context.Context, sess *Session, conn WebsocketC
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					err := handler.WSHandle(sess.Writer(), receivedMsg.Message)
+					err := handler.WSHandle(sess.Writer(), receivedMsg.Message, customState)
 					if err != nil {
 						logger().Error("Non-Fatal Error handling message", "error", err.Error())
 					}
@@ -167,7 +170,7 @@ func (m *Mgr) handleMessages(ctx context.Context, sess *Session, conn WebsocketC
 }
 
 // ServeSession handles the main WebSocket session lifecycle
-func (m *Mgr) ServeSession(conn WebsocketConn, cache Cache) error {
+func (m *Mgr[T]) ServeSession(conn WebsocketConn, cache Cache) error {
 	// Handle disconnect
 	defer func() {
 		for _, f := range m.onDisconnFns {
@@ -186,11 +189,11 @@ func (m *Mgr) ServeSession(conn WebsocketConn, cache Cache) error {
 	}
 
 	// Set up session
-	sess, err := m.establishSession(conn, cache, connectMsg)
+	sess, customState, err := m.establishSession(conn, cache, connectMsg)
 	if err != nil {
 		return fmt.Errorf("session establishment failed: %w", err)
 	}
 
 	// Start message handling
-	return m.handleMessages(ctx, sess, conn)
+	return m.handleMessages(ctx, sess, conn, customState)
 }
